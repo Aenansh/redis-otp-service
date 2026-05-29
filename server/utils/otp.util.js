@@ -18,7 +18,6 @@ export function otpBlockedKey(identifier) {
 
 export function checkBlocked(identifier) {
   const key = otpBlockedKey(identifier);
-  const isBlocked = await redis.get(key);
-
-  if(!isBlocked)
+  const isBlocked = await redis.exists(key);
+  return isBlocked;
 }
