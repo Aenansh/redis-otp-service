@@ -41,7 +41,7 @@ const sendOtp = async (req, res) => {
 
     const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    await redis.set(`otp:${identifier}`, newOtp);
+    await redis.set(`otp:${identifier}`, newOtp, "EX", 180);
 
     if (method === "email") {
       await emailQueue.add(
@@ -82,4 +82,55 @@ const sendOtp = async (req, res) => {
   }
 };
 
-export { sendOtp };
+const verifyOtp = async (req, res) => {
+  try {
+    const { identifier, otp } = req.body;
+    const isBlocked = await checkAttemptBlocked(identifier);
+    if (isBlocked) {
+      return res.status(403).json({
+        message: "You are temporarily banned due to multiple requests.",
+        success: false,
+      });
+    }
+
+    if (typeof otp !== "string" || !otp.trim()) {
+      return res
+        .status(400)
+        .json({ message: "No OTP provided.", success: false });
+    }
+
+    const isValid = /^\d{6}$/.test(otp);
+    if (!isValid) {
+      return res
+        .status(400)
+        .json({ message: "Invalid OTP provided.", success: false });
+    }
+
+    const makeAttempt = await setAndIncrAttempts(identifier);
+    if (!makeAttempt) {
+      return res.status(403).json({
+        message: "All attempts exhausted or an error occured.",
+        success: false,
+      });
+    }
+
+    const realOtp = await redis.get(`otp:${identifier}`);
+    if (!realOtp) {
+      return res.status(400).json({ message: "OTP expired.", success: false });
+    }
+
+    if (otp !== realOtp) {
+      return res
+        .status(400)
+        .json({ message: "Incorrect OTP provided.", success: false });
+    }
+
+    await redis.del(`otp:${identifier}`);
+    res.json({ message: "Correct OTP, you can enter.", success: true });
+  } catch (error) {
+    console.log("Error in verifying OTP");
+    res.status(500).json({ message: "Internal Server Error.", success: false });
+  }
+};
+
+export { sendOtp, verifyOtp };
