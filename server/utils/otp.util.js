@@ -1,7 +1,9 @@
 import redis from "../config/redis.config.js";
 
 const maxAttemptsAmount = process.env.ATTEMPTS_ALLOWED || 5;
+const maxGenerations = process.env.GENERATIONS_ALLOWED || 3;
 
+//Validations
 function validateIdentifier(identifier, method) {
   if (typeof identifier !== "string" || identifier.trim()) return false;
   if (method === "email") {
@@ -14,21 +16,62 @@ function validateIdentifier(identifier, method) {
   return false;
 }
 
-function otpBlockedKey(identifier) {
-  return `otp:${identifier}:blocked`;
+//Keys
+function otpAttemptBlockedKey(identifier) {
+  return `otp:${identifier}:blocked:attempts`;
+}
+
+function otpGenerateBlockedKey(identifier) {
+  return `otp:${identifier}:blocked:generated`;
 }
 
 function attemptsKey(identifier) {
   return `otp:${identifier}:attempts`;
 }
 
-async function checkBlocked(identifier) {
+function generatedOtpKey(identifier) {
+  return `otp:${identifier}:generated`;
+}
+
+//Redis checks
+//Blocked checks
+async function checkAttemptBlocked(identifier) {
   try {
-    const key = otpBlockedKey(identifier);
+    const key = otpAttemptBlockedKey(identifier);
     const isBlocked = await redis.exists(key);
     return isBlocked;
   } catch (error) {
     console.log("Error in checking blocked", error);
+    return false;
+  }
+}
+
+async function checkGenerateBlocked(identifier) {
+  try {
+    const key = otpGenerateBlockedKey(identifier);
+    const isBlocked = await redis.exists(key);
+    return isBlocked;
+  } catch (error) {
+    console.log("Error in checking blocked", error);
+    return false;
+  }
+}
+
+//increment attempts and generations
+async function incrAndCheckOtpGenerated(identifier) {
+  try {
+    const generatedKey = generatedOtpKey(identifier);
+    const generated = await redis.incr(generatedKey);
+
+    if (generated === 1) await redis.expire(generatedKey, 3600);
+
+    if (generated > maxGenerations) {
+      await redis.set(otpGenerateBlockedKey(identifier), true, "EX", 3600);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.log("Error in making new OTP generation", error);
     return false;
   }
 }
@@ -54,8 +97,8 @@ async function setAndIncrAttempts(identifier) {
 
 export {
   validateIdentifier,
-  otpBlockedKey,
-  attemptsKey,
-  checkBlocked,
+  checkAttemptBlocked,
+  checkGenerateBlocked,
+  incrAndCheckOtpGenerated,
   setAndIncrAttempts,
 };
