@@ -5,7 +5,7 @@ const maxGenerations = process.env.GENERATIONS_ALLOWED || 3;
 
 //Validations
 function validateIdentifier(identifier, method) {
-  if (typeof identifier !== "string" || identifier.trim()) return false;
+  if (typeof identifier !== "string" || !identifier.trim()) return false;
   if (method === "email") {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(identifier);
@@ -85,7 +85,7 @@ async function setAndIncrAttempts(identifier) {
     if (attempts === 1) {
       await redis.expire(attemptKey, 3600);
     } else if (attempts > maxAttemptsAmount) {
-      await redis.set(otpBlockedKey(identifier), true);
+      await redis.set(otpAttemptBlockedKey(identifier), true);
       return false;
     }
     return true;
