@@ -9,9 +9,10 @@ A small Node.js service for generating and verifying one-time passwords (OTPs). 
 - Limit OTP generation attempts per identifier.
 - Limit verification attempts per identifier.
 - Send email OTPs through Gmail SMTP using Nodemailer.
-- Queue email and SMS delivery work with BullMQ.
+- Send phone OTPs through Fast2SMS.
+- Queue email and SMS delivery work with BullMQ workers.
 
-> SMS delivery is currently a placeholder in `server/worker.js`; phone OTPs are queued, but no SMS provider is wired up yet.
+> MongoDB is not used by the current API. OTPs, generation counts, verification attempts, and temporary blocks are all stored in Redis.
 
 ## Project Structure
 
@@ -27,7 +28,8 @@ A small Node.js service for generating and verifying one-time passwords (OTPs). 
 |   |   `-- otp.routes.js
 |   |-- utils/
 |   |   |-- email.util.js
-|   |   `-- otp.util.js
+|   |   |-- otp.util.js
+|   |   `-- sms.util.js
 |   |-- docker-compose.yml
 |   |-- index.js
 |   |-- producer.js
@@ -42,6 +44,7 @@ A small Node.js service for generating and verifying one-time passwords (OTPs). 
 - npm
 - Docker, if you want to run Redis through Docker Compose
 - A Gmail account with an app password for email delivery
+- A Fast2SMS API key for phone OTP delivery
 
 ## Environment Variables
 
@@ -60,6 +63,9 @@ GENERATIONS_ALLOWED=3
 
 GMAIL_USER=your-email@gmail.com
 GMAIL_APP_PASSWORD=your-gmail-app-password
+
+FAST_SMS_API_KEY=your-fast2sms-api-key
+FAST_SMS_URL=https://www.fast2sms.com/dev/bulkV2
 ```
 
 Notes:
@@ -68,6 +74,9 @@ Notes:
 - `REDIS_HOST` and `REDIS_PORT` are used by BullMQ queues and workers.
 - `ATTEMPTS_ALLOWED` controls verification attempts per identifier.
 - `GENERATIONS_ALLOWED` controls OTP generation requests per identifier.
+- `GMAIL_USER` and `GMAIL_APP_PASSWORD` are required for email OTPs.
+- `FAST_SMS_API_KEY` and `FAST_SMS_URL` are required for phone OTPs.
+- MongoDB-related environment variables are not required because the service does not connect to MongoDB.
 
 ## Setup
 
@@ -192,9 +201,37 @@ The service uses these Redis key patterns:
 - `otp:{identifier}:blocked:generated` blocks excessive generation.
 - `otp:{identifier}:blocked:attempts` blocks excessive verification attempts.
 
+## SMS Delivery
+
+Phone OTPs use the `phone` method and are sent through the `sms_queue` BullMQ worker. The worker calls `otpSms` in `server/utils/sms.util.js`, which posts to Fast2SMS with this payload:
+
+```json
+{
+  "route": "q",
+  "message": "Your verification code is <otp>. Do not share this code.",
+  "numbers": "<phone-number>"
+}
+```
+
+The phone number must be a valid 10-digit Indian mobile number starting with `6`, `7`, `8`, or `9`.
+
+Send a phone OTP:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/otp \
+  -H "Content-Type: application/json" \
+  -d "{\"identifier\":\"9876543210\",\"method\":\"phone\"}"
+```
+
+## MongoDB
+
+MongoDB is not part of the active runtime for this service. The current `server/docker-compose.yml` starts Redis only, and the server code has no MongoDB client, Mongoose models, or MongoDB connection setup.
+
+If persistence is added later, MongoDB could be used for audit logs, user records, or OTP delivery history, but short-lived OTP verification currently depends on Redis expiry semantics.
+
 ## Development Notes
 
 - Email delivery is handled in `server/worker.js` through `email_queue`.
-- SMS jobs are added to `sms_queue`, but the worker does not send SMS yet.
-- `server/docker-compose.yml` also defines MongoDB, but the current API does not use MongoDB.
+- SMS delivery is handled in `server/worker.js` through `sms_queue` and `server/utils/sms.util.js`.
+- `server/docker-compose.yml` defines Redis only.
 - There are no tests configured yet.
