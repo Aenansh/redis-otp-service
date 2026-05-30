@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import { otpEmail } from "./utils/email.util.js";
+import { otpSms } from "./utils/sms.util.js";
 
 const REDIS_PORT = process.env.REDIS_PORT || 6379;
 const REDIS_HOST = process.env.REDIS_HOST || "localhost";
@@ -27,6 +28,11 @@ const smsWorker = new Worker(
   async (job) => {
     try {
       //send sms
+      console.log("Processing email...", job.id, job.name, job.data);
+      const res = await otpSms(job.data.to, job.data.otp);
+      console.log("Email sent.", job.id, job.name, job.data);
+
+      console.log(res);
     } catch (error) {
       //sms error
       console.log("Error occured while sending the sms", error);
