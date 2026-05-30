@@ -1,26 +1,23 @@
 import dotenv from "dotenv";
 dotenv.config({ path: "./.env.local" });
 
-const brevo_api_key = process.env.BREVO_API_KEY;
-const brevo_api = process.env.BREVO_API;
+const api_key = process.env.FAST_SMS_API_KEY;
+const url = process.env.FAST_SMS_URL;
 
 export const otpSms = async (to, otp) => {
   try {
-    const phone = "+91" + to;
     const payload = {
-      type: "transactional",
-      unicodeEnabled: false,
-      sender: "OTP-Service",
-      recipient: phone,
-      content: `Your OTP is ${otp}. Please do not share this code.`,
+      route: "q",
+      message: `Your verification code is ${otp}. Do not share this code.`,
+      numbers: to,
     };
 
-    const response = await fetch(brevo_api, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
-        Accept: "application/json",
+        "Accept": "application/json",
+        authorization: api_key,
         "Content-Type": "application/json",
-        "api-key": brevo_api_key,
       },
       body: JSON.stringify(payload),
     });
@@ -28,8 +25,8 @@ export const otpSms = async (to, otp) => {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("Brevo API Error:", data);
-      throw new Error(data.message || "Failed to send SMS via Brevo");
+      console.error("Fast2SMS API Error:", data);
+      throw new Error(data.message || "Failed to send SMS via Fast2SMS");
     }
 
     return data;
